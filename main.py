@@ -32,9 +32,173 @@ from PySide6.QtWidgets import (
 
 ROWS = 50
 COLS = 26
-HEADER_BG = "#EBEBEB"
+HEADER_BG = "#E6E5E3"
 DEFAULT_FAMILY = "Arial"
 DEFAULT_SIZE = 11
+
+APP_STYLESHEET = """
+QWidget {
+    font-size: 13px;
+    color: #1E1E1E;
+}
+
+/* Toolbar */
+QWidget#toolbar {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #EEECEA, stop:1 #DEDBD8);
+    border-bottom: 1px solid #BFBDBA;
+}
+
+/* Sidebar panel */
+QWidget#sidebar {
+    background: #E4E3E1;
+    border-right: 1px solid #C8C7C5;
+}
+
+/* Buttons — morphic raised look */
+QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #FAFAF9, stop:1 #E4E2DF);
+    border: 1px solid #B4B2AF;
+    border-radius: 5px;
+    padding: 3px 10px;
+    min-height: 22px;
+    color: #1E1E1E;
+}
+QPushButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #FFFFFF, stop:1 #ECEAE7);
+    border-color: #969492;
+}
+QPushButton:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #D4D2CF, stop:1 #E4E2DF);
+    border-color: #969492;
+}
+QPushButton:checked {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #A8C0D8, stop:1 #BACCDC);
+    border-color: #6A8CAC;
+    color: #0A1828;
+}
+QPushButton:disabled {
+    background: #ECEAE8;
+    border-color: #CECDCB;
+    color: #AAAAAA;
+}
+
+/* Sheet list */
+QListWidget {
+    background: #EFEEEC;
+    border: 1px solid #C4C3C1;
+    border-radius: 6px;
+    outline: none;
+    padding: 2px;
+}
+QListWidget::item {
+    padding: 5px 8px;
+    border-radius: 4px;
+}
+QListWidget::item:selected {
+    background: #AABFCF;
+    color: #0A1020;
+}
+QListWidget::item:hover:!selected {
+    background: #DDDBD9;
+}
+
+/* Combo boxes */
+QComboBox {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #FAFAF9, stop:1 #E4E2DF);
+    border: 1px solid #B4B2AF;
+    border-radius: 5px;
+    padding: 2px 8px;
+    min-height: 22px;
+}
+QComboBox:hover {
+    border-color: #969492;
+}
+QComboBox::drop-down {
+    border: none;
+    width: 16px;
+}
+QComboBox QAbstractItemView {
+    background: #F5F4F2;
+    border: 1px solid #C0BEBC;
+    selection-background-color: #AABFCF;
+    selection-color: #0A1020;
+    outline: none;
+}
+
+/* Splitter */
+QSplitter::handle:horizontal {
+    background: #C4C3C1;
+    width: 1px;
+}
+
+/* Table */
+QTableWidget {
+    gridline-color: #DDDBD9;
+    background: #FFFFFF;
+    selection-background-color: #C0D4E8;
+    selection-color: #0A0A1A;
+    border: none;
+}
+QHeaderView::section {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #F2F1EF, stop:1 #E6E5E3);
+    border: none;
+    border-right: 1px solid #CECDCB;
+    border-bottom: 1px solid #CECDCB;
+    padding: 4px 6px;
+    color: #444444;
+    font-size: 12px;
+}
+QScrollBar:vertical {
+    background: #ECEAE8;
+    width: 12px;
+    border-radius: 6px;
+}
+QScrollBar::handle:vertical {
+    background: #B8B6B4;
+    border-radius: 5px;
+    min-height: 24px;
+    margin: 2px;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar:horizontal {
+    background: #ECEAE8;
+    height: 12px;
+    border-radius: 6px;
+}
+QScrollBar::handle:horizontal {
+    background: #B8B6B4;
+    border-radius: 5px;
+    min-width: 24px;
+    margin: 2px;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+
+/* Sidebar buttons — flat, blends into the panel */
+QWidget#sidebar QPushButton {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    padding: 5px 10px;
+    text-align: left;
+    color: #2C2C2C;
+    min-height: 24px;
+}
+QWidget#sidebar QPushButton:hover {
+    background: #D2D0CE;
+    border-color: #BFBDBB;
+}
+QWidget#sidebar QPushButton:pressed {
+    background: #C2C0BE;
+    border-color: #AFADAB;
+}
+"""
 
 
 # ── Database path ─────────────────────────────────────────────────────────────
@@ -463,6 +627,7 @@ class MainWindow(QMainWindow):
 
     def _make_sidebar(self) -> QWidget:
         w = QWidget()
+        w.setObjectName("sidebar")
         w.setMinimumWidth(160)
         w.setMaximumWidth(240)
         v = QVBoxLayout(w)
@@ -499,8 +664,8 @@ class MainWindow(QMainWindow):
 
     def _make_toolbar(self) -> QWidget:
         bar = QWidget()
+        bar.setObjectName("toolbar")
         bar.setFixedHeight(42)
-        bar.setStyleSheet("QWidget { background: #F5F5F5; border-bottom: 1px solid #D0D0D0; }")
         h = QHBoxLayout(bar)
         h.setContentsMargins(8, 4, 8, 4)
         h.setSpacing(4)
@@ -508,7 +673,7 @@ class MainWindow(QMainWindow):
         # Bold
         self.btn_bold = QPushButton("B")
         self.btn_bold.setCheckable(True)
-        self.btn_bold.setFixedWidth(30)
+        self.btn_bold.setFixedWidth(34)
         bold_font = QFont()
         bold_font.setBold(True)
         self.btn_bold.setFont(bold_font)
@@ -518,7 +683,7 @@ class MainWindow(QMainWindow):
         # Italic
         self.btn_italic = QPushButton("I")
         self.btn_italic.setCheckable(True)
-        self.btn_italic.setFixedWidth(30)
+        self.btn_italic.setFixedWidth(34)
         italic_font = QFont()
         italic_font.setItalic(True)
         self.btn_italic.setFont(italic_font)
@@ -551,14 +716,14 @@ class MainWindow(QMainWindow):
 
         # Background color
         self.btn_bg = QPushButton("BG")
-        self.btn_bg.setFixedWidth(36)
+        self.btn_bg.setFixedWidth(50)
         self.btn_bg.setToolTip("Cell background color")
         self.btn_bg.clicked.connect(self._pick_bg_color)
         h.addWidget(self.btn_bg)
 
         # Text color
         self.btn_fg = QPushButton("A")
-        self.btn_fg.setFixedWidth(28)
+        self.btn_fg.setFixedWidth(38)
         self.btn_fg.setToolTip("Text color")
         self.btn_fg.clicked.connect(self._pick_text_color)
         h.addWidget(self.btn_fg)
@@ -705,9 +870,8 @@ class MainWindow(QMainWindow):
 # ── Utilities ─────────────────────────────────────────────────────────────────
 
 def _vsep() -> QLabel:
-    """A thin vertical separator for the toolbar."""
     sep = QLabel("|")
-    sep.setStyleSheet("color: #B0B0B0; margin: 0 2px;")
+    sep.setStyleSheet("color: #B4B2AF; margin: 0 2px;")
     return sep
 
 
@@ -716,6 +880,7 @@ def _vsep() -> QLabel:
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("XcelStyle")
+    app.setStyleSheet(APP_STYLESHEET)
     db = Database(get_db_path())
     window = MainWindow(db)
     window.show()
