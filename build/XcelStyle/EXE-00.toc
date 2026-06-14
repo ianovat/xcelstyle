@@ -50,7 +50,7 @@
  [],
  False,
  False,
- 1781453527,
+ 1781455664,
  [('runw',
    '/Users/ianmackenziegarnett/Codebases/xcelstyle/.venv/lib/python3.9/site-packages/PyInstaller/bootloader/Darwin-64bit/runw',
    'EXECUTABLE')],
