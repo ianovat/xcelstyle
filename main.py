@@ -377,7 +377,8 @@ class SpreadsheetGrid(QTableWidget):
     # ── Loading ───────────────────────────────────────────────────────────────
 
     def load_sheet(self, sheet_id: int):
-        self.save_dimensions()  # persist outgoing sheet's layout before switching
+        self._flush_cells()     # snapshot every visible cell before switching
+        self.save_dimensions()
         self._loading = True
         self.sheet_id = sheet_id
         self.clearContents()
@@ -412,6 +413,20 @@ class SpreadsheetGrid(QTableWidget):
                 self.setRowHeight(row, height)
 
         self._loading = False
+
+    def _flush_cells(self):
+        """Explicitly persist every non-empty cell for the current sheet.
+
+        Called before switching sheets so in-flight edits are never lost,
+        even if cellChanged hasn't fired yet (e.g. editor still open).
+        """
+        if self.sheet_id is None:
+            return
+        for row in range(ROWS):
+            for col in range(COLS):
+                item = self.item(row, col)
+                if item is not None and item.text():
+                    self._persist(row, col, item)
 
     def _stamp_headers(self):
         """Pre-fill row 0 and column 0 with the header background."""
