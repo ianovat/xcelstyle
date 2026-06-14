@@ -6,7 +6,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QBrush, QColor, QFont, QFontDatabase
 from PySide6.QtWidgets import (
     QApplication,
@@ -81,6 +81,20 @@ class Database:
                 UNIQUE (sheet_id, row, col),
                 FOREIGN KEY (sheet_id) REFERENCES sheets (id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS col_widths (
+                sheet_id INTEGER NOT NULL,
+                col      INTEGER NOT NULL,
+                width    INTEGER NOT NULL,
+                PRIMARY KEY (sheet_id, col),
+                FOREIGN KEY (sheet_id) REFERENCES sheets (id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS row_heights (
+                sheet_id INTEGER NOT NULL,
+                row      INTEGER NOT NULL,
+                height   INTEGER NOT NULL,
+                PRIMARY KEY (sheet_id, row),
+                FOREIGN KEY (sheet_id) REFERENCES sheets (id) ON DELETE CASCADE
+            );
         """)
         self.conn.commit()
 
@@ -150,6 +164,30 @@ class Database:
         )
         self.conn.commit()
 
+    # col/row dimensions ------------------------------------------------------
+
+    def get_col_widths(self, sheet_id: int):
+        return self.conn.execute(
+            "SELECT col, width FROM col_widths WHERE sheet_id=?", (sheet_id,)
+        ).fetchall()
+
+    def save_dimensions(self, sheet_id: int,
+                        col_widths: dict[int, int], row_heights: dict[int, int]):
+        """Replace all stored dimensions for a sheet in one transaction."""
+        self.conn.execute("DELETE FROM col_widths WHERE sheet_id=?", (sheet_id,))
+        if col_widths:
+            self.conn.executemany(
+                "INSERT INTO col_widths (sheet_id, col, width) VALUES (?, ?, ?)",
+                [(sheet_id, c, w) for c, w in col_widths.items()],
+            )
+        self.conn.execute("DELETE FROM row_heights WHERE sheet_id=?", (sheet_id,))
+        if row_heights:
+            self.conn.executemany(
+                "INSERT INTO row_heights (sheet_id, row, height) VALUES (?, ?, ?)",
+                [(sheet_id, r, h) for r, h in row_heights.items()],
+            )
+        self.conn.commit()
+
     def close(self):
         self.conn.close()
 
@@ -168,11 +206,14 @@ class SpreadsheetGrid(QTableWidget):
         for col in range(COLS):
             self.setColumnWidth(col, 100)
 
+        self._copied_format: dict | None = None
+
         self.cellChanged.connect(self._on_cell_changed)
 
     # ── Loading ───────────────────────────────────────────────────────────────
 
     def load_sheet(self, sheet_id: int):
+        self.save_dimensions()  # persist outgoing sheet's layout before switching
         self._loading = True
         self.sheet_id = sheet_id
         self.clearContents()
@@ -197,6 +238,14 @@ class SpreadsheetGrid(QTableWidget):
             if text_color:
                 item.setForeground(QBrush(QColor(text_color)))
             self.setItem(row, col, item)
+
+        # restore column widths and row heights
+        for col, width in self.db.get_col_widths(sheet_id):
+            if col < COLS:
+                self.setColumnWidth(col, width)
+        for row, height in self.db.get_row_heights(sheet_id):
+            if row < ROWS:
+                self.setRowHeight(row, height)
 
         self._loading = False
 
@@ -305,6 +354,61 @@ class SpreadsheetGrid(QTableWidget):
             "font_family": f.family() or DEFAULT_FAMILY,
         }
 
+    def copy_format(self):
+        """Snapshot the current cell's formatting for later paste."""
+        item = self.currentItem()
+        if item is None:
+            return
+        f = item.font()
+        bg = item.background()
+        fg = item.foreground()
+        self._copied_format = {
+            "bold": f.bold(),
+            "italic": f.italic(),
+            "font_size": f.pointSize() if f.pointSize() > 0 else DEFAULT_SIZE,
+            "font_family": f.family() or DEFAULT_FAMILY,
+            "bg_color": bg.color().name() if bg.style().value != 0 else "",
+            "text_color": fg.color().name() if fg.style().value != 0 else "",
+        }
+
+    def paste_format(self):
+        """Apply the last copied format to all selected cells."""
+        if self._copied_format is None:
+            return
+        fmt = self._copied_format
+        for item in self._get_selected():
+            f = item.font()
+            f.setBold(fmt["bold"])
+            f.setItalic(fmt["italic"])
+            f.setPointSize(fmt["font_size"])
+            f.setFamily(fmt["font_family"])
+            item.setFont(f)
+            if fmt["bg_color"]:
+                item.setBackground(QBrush(QColor(fmt["bg_color"])))
+            if fmt["text_color"]:
+                item.setForeground(QBrush(QColor(fmt["text_color"])))
+            self._persist(item.row(), item.column(), item)
+
+    # ── Dimension persistence ─────────────────────────────────────────────────
+
+    def save_dimensions(self):
+        """Snapshot all non-default column widths and row heights to the DB."""
+        if self.sheet_id is None:
+            return
+        default_col_w = 100
+        default_row_h = self.verticalHeader().defaultSectionSize()
+        col_widths = {
+            col: self.columnWidth(col)
+            for col in range(COLS)
+            if self.columnWidth(col) != default_col_w
+        }
+        row_heights = {
+            row: self.rowHeight(row)
+            for row in range(ROWS)
+            if self.rowHeight(row) != default_row_h
+        }
+        self.db.save_dimensions(self.sheet_id, col_widths, row_heights)
+
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _get_selected(self) -> list[QTableWidgetItem]:
@@ -331,9 +435,15 @@ class MainWindow(QMainWindow):
         self._syncing = False  # prevents toolbar ↔ cell feedback loops
 
         self.setWindowTitle("XcelStyle")
-        self.resize(1100, 680)
         self._build_ui()
         self._populate_sheet_list()
+
+        settings = QSettings("XcelStyle", "XcelStyle")
+        geometry = settings.value("window/geometry")
+        if geometry:
+            self.restoreGeometry(geometry)
+        else:
+            self.resize(1100, 680)
 
     # ── UI construction ───────────────────────────────────────────────────────
 
@@ -453,6 +563,20 @@ class MainWindow(QMainWindow):
         self.btn_fg.clicked.connect(self._pick_text_color)
         h.addWidget(self.btn_fg)
 
+        h.addWidget(_vsep())
+
+        # Copy / paste format
+        btn_copy_fmt = QPushButton("Copy Fmt")
+        btn_copy_fmt.setToolTip("Copy formatting from current cell")
+        btn_copy_fmt.clicked.connect(self._copy_fmt)
+        h.addWidget(btn_copy_fmt)
+
+        self.btn_paste_fmt = QPushButton("Paste Fmt")
+        self.btn_paste_fmt.setToolTip("Paste formatting to selected cells")
+        self.btn_paste_fmt.setEnabled(False)
+        self.btn_paste_fmt.clicked.connect(self._paste_fmt)
+        h.addWidget(self.btn_paste_fmt)
+
         h.addStretch()
         return bar
 
@@ -471,6 +595,13 @@ class MainWindow(QMainWindow):
                 self.grid.apply_font_size(size)
         except ValueError:
             pass
+
+    def _copy_fmt(self):
+        self.grid.copy_format()
+        self.btn_paste_fmt.setEnabled(self.grid._copied_format is not None)
+
+    def _paste_fmt(self):
+        self.grid.paste_format()
 
     def _pick_bg_color(self):
         color = QColorDialog.getColor(parent=self, title="Background Color")
@@ -565,6 +696,8 @@ class MainWindow(QMainWindow):
         self.sheet_list.setCurrentRow(max(0, row - 1))
 
     def closeEvent(self, event):
+        QSettings("XcelStyle", "XcelStyle").setValue("window/geometry", self.saveGeometry())
+        self.grid.save_dimensions()
         self.db.close()
         super().closeEvent(event)
 
